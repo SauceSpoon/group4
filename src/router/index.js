@@ -1,17 +1,15 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import Home from '../pages/Home.vue'
-import Detail from '../pages/Detail.vue'
-import Search from '../pages/Search.vue'
-
-const routes = [
-  { path: '/', component: Home },
-  { path: '/item/:id', component: Detail },
-  {path: '/search', component: Search}
-]
+import Home from '../views/Home.vue'
+import Detail from '../views/Detail.vue'
+import Search from '../views/Search.vue'
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes: [
+    { path: '/', component: Home },
+    { path: '/item/:id', component: Detail },
+    { path: '/search', component: Search }
+  ]
 })
 
 export default router
