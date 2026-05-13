@@ -1,11 +1,23 @@
-import mongoose from 'mongoose';
+const mysql = require('mysql2/promise');
 
-export const connectDB = async () => {
-  try {
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/campus_secondhand');
-    console.log('✅ MongoDB 连接成功');
-  } catch (err) {
-    console.error('❌ MongoDB 连接失败:', err.message);
-    process.exit(1);
-  }
+let pool = null;
+
+exports.connectDB = async () => {
+  if (pool) return pool;
+  
+  pool = mysql.createPool({
+    host: process.env.MYSQL_HOST,
+    port: process.env.MYSQL_PORT || 3306,
+    user: process.env.MYSQL_USER,
+    password: process.env.MYSQL_PASSWORD,
+    database: process.env.MYSQL_DATABASE,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
+  });
+  
+  console.log('✅ MySQL 连接成功');
+  return pool;
 };
+
+exports.getPool = () => pool;
