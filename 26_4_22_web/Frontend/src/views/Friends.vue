@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { t } from '../i18n.js'
 
 const router = useRouter()
-const API_BASE = 'https://ent-project-d3ge03zdx1e71b66a-1424722488.ap-shanghai.app.tcloudbase.com/api'
+const API_BASE = import.meta.env.VITE_API_BASE || ''
 
 const friends = ref([])
 const searchQuery = ref('')
