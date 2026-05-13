@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+const mongoose = require('mongoose');
 
 const productSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true },
@@ -36,4 +36,4 @@ productSchema.index({ title: 'text', description: 'text' });
 productSchema.index({ tag: 1, status: 1 });
 productSchema.index({ createdAt: -1 });
 
-export default mongoose.model('Product', productSchema);
+module.exports = mongoose.model('Product', productSchema);

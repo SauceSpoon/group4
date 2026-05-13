@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+const mongoose = require('mongoose');
 
 const friendshipSchema = new mongoose.Schema({
   userA: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -6,7 +6,6 @@ const friendshipSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-// 确保唯一好友关系
 friendshipSchema.index({ userA: 1, userB: 1 }, { unique: true });
 
-export default mongoose.model('Friendship', friendshipSchema);
+module.exports = mongoose.model('Friendship', friendshipSchema);
