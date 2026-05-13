@@ -1,13 +1,18 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { t } from '../i18n.js'
 
 const router = useRouter()
-const API_BASE = 'http://localhost:3000/api'
+const API_BASE = 'https://ent-project-d3ge03zdx1e71b66a-1424722488.ap-shanghai.app.tcloudbase.com/api'
 
 const friends = ref([])
 const searchQuery = ref('')
 const searchResults = ref([])
+const unreadMap = ref({})
+const totalUnread = ref(0)
+
+let unreadTimer = null
 
 const fetchFriends = async () => {
   const token = localStorage.getItem('token')
@@ -19,6 +24,22 @@ const fetchFriends = async () => {
     if (res.ok) friends.value = data
   } catch (err) {
     console.error('获取好友失败:', err)
+  }
+}
+
+const fetchUnread = async () => {
+  const token = localStorage.getItem('token')
+  try {
+    const res = await fetch(`${API_BASE}/friends/unread`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const data = await res.json()
+    if (res.ok) {
+      unreadMap.value = data.byFriend || {}
+      totalUnread.value = data.total || 0
+    }
+  } catch (err) {
+    console.error('获取未读失败:', err)
   }
 }
 
@@ -48,14 +69,14 @@ const addFriend = async (friendId) => {
       body: JSON.stringify({ friendId })
     })
     const data = await res.json()
-    alert(data.message || '已添加')
+    alert(data.message || t('friends.added'))
     if (res.ok) {
       searchResults.value = []
       searchQuery.value = ''
       fetchFriends()
     }
   } catch (err) {
-    alert('添加失败')
+    alert(t('friends.addFail'))
   }
 }
 
@@ -65,33 +86,60 @@ const goChat = (friendId) => {
 
 onMounted(() => {
   fetchFriends()
+  fetchUnread()
+  unreadTimer = setInterval(fetchUnread, 5000)
+})
+
+onUnmounted(() => {
+  if (unreadTimer) clearInterval(unreadTimer)
 })
 </script>
 
 <template>
   <div class="friends-page">
-    <h2>👥 我的好友</h2>
+    <!-- 新增：返回主页按钮 -->
+    <div class="top-bar">
+      <button class="back-btn" @click="router.push('/')"></button>
+    </div>
+
+    <h2>
+      {{ t('friends.title') }}
+      <span v-if="totalUnread > 0" class="total-badge">
+        {{ totalUnread > 99 ? '99+' : totalUnread }}
+      </span>
+    </h2>
 
     <div class="search-box">
-      <input v-model="searchQuery" @keyup.enter="searchUsers" placeholder="搜索用户名或邮箱添加好友..." />
-      <button @click="searchUsers">搜索</button>
+      <input v-model="searchQuery" @keyup.enter="searchUsers" :placeholder="t('friends.search')" />
+      <button @click="searchUsers">{{ t('friends.searchBtn') }}</button>
     </div>
 
     <div v-if="searchResults.length > 0" class="search-results">
-      <h4>搜索结果</h4>
-      <div v-for="user in searchResults" :key="user._id" class="user-item">
+      <h4>{{ t('friends.results') }}</h4>
+      <div v-for="user in searchResults" :key="user.id" class="user-item">
         <span>{{ user.username }}</span>
-        <button @click="addFriend(user._id)">+ 加好友</button>
+        <button @click="addFriend(user.id)">{{ t('friends.add') }}</button>
       </div>
     </div>
 
     <div class="friend-list">
-      <div v-if="friends.length === 0" class="empty">还没有好友，去搜索添加吧~</div>
-      <div v-for="friend in friends" :key="friend._id" class="friend-card" @click="goChat(friend._id)">
-        <div class="avatar">{{ friend.username[0] }}</div>
+      <div v-if="friends.length === 0" class="empty">{{ t('friends.empty') }}</div>
+      <div 
+        v-for="friend in friends" 
+        :key="friend._id" 
+        class="friend-card" 
+        @click="goChat(friend._id)"
+      >
+        <img v-if="friend.avatar" :src="friend.avatar" class="avatar-img" />
+        <div v-else class="avatar-text">{{ friend.username?.[0] || '?' }}</div>
+        
         <div class="info">
           <div class="name">{{ friend.username }}</div>
-          <div class="hint">点击开始聊天</div>
+          <div class="hint">{{ t('friends.chatHint') }}</div>
+        </div>
+
+        <div v-if="unreadMap[friend._id]" class="unread-badge">
+          {{ unreadMap[friend._id] > 99 ? '99+' : unreadMap[friend._id] }}
         </div>
       </div>
     </div>
@@ -105,9 +153,46 @@ onMounted(() => {
   padding: 0 20px;
 }
 
+/* 新增：返回栏 */
+.top-bar {
+  margin-bottom: 15px;
+}
+
+.back-btn {
+  width: 120px;
+  height: 54px;
+  background: url('/back-bubble-v2.png') no-repeat center center;
+  background-size: contain;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.2s;
+  padding: 0;
+}
+
+.back-btn:hover {
+  transform: scale(1.05);
+}
+
 h2 {
   color: #303133;
   margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.total-badge {
+  background: #f56c6c;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
 }
 
 .search-box {
@@ -172,13 +257,22 @@ h2 {
   border: 1px solid #e4e7ed;
   cursor: pointer;
   transition: all 0.3s;
+  position: relative;
 }
 
 .friend-card:hover {
   box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
-.avatar {
+.avatar-img {
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.avatar-text {
   width: 45px;
   height: 45px;
   background: #409eff;
@@ -189,6 +283,11 @@ h2 {
   justify-content: center;
   font-size: 20px;
   font-weight: bold;
+  flex-shrink: 0;
+}
+
+.info {
+  flex: 1;
 }
 
 .name {
@@ -201,6 +300,21 @@ h2 {
   font-size: 12px;
   color: #909399;
   margin-top: 4px;
+}
+
+.unread-badge {
+  background: #f56c6c;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  flex-shrink: 0;
 }
 
 .empty {
