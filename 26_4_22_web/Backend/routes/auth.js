@@ -1,9 +1,9 @@
-import express from 'express';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { body, validationResult } from 'express-validator';
-import User from '../models/User.js';
-import { auth } from '../middleware/auth.js';
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { body, validationResult } = require('express-validator');
+const { getPool } = require('../config/db.js');
+const { auth } = require('../middleware/auth.js');
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'campus_secret_key_2024';
@@ -20,21 +20,29 @@ router.post('/register', [
   }
 
   try {
+    const pool = getPool();
     const { username, email, password } = req.body;
     
-    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
-    if (existingUser) {
+    const [existing] = await pool.execute(
+      'SELECT id FROM users WHERE email = ? OR username = ?',
+      [email, username]
+    );
+    
+    if (existing.length > 0) {
       return res.status(400).json({ message: '用户名或邮箱已存在' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ username, email, password: hashedPassword });
-    await user.save();
+    
+    const [result] = await pool.execute(
+      'INSERT INTO users (username, email, password) VALUES (?, ?, ?)',
+      [username, email, hashedPassword]
+    );
 
-    const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: result.insertId }, JWT_SECRET, { expiresIn: '7d' });
     res.status(201).json({ 
       token, 
-      user: { id: user._id, username, email } 
+      user: { id: result.insertId, username, email } 
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -44,32 +52,67 @@ router.post('/register', [
 // 登录
 router.post('/login', async (req, res) => {
   try {
+    const pool = getPool();
     const { email, password } = req.body;
     
-    const user = await User.findOne({ email });
+    const [users] = await pool.execute(
+      'SELECT id, username, email, password, avatar FROM users WHERE email = ?',
+      [email]
+    );
+    
+    const user = users[0];
     if (!user) return res.status(400).json({ message: '用户不存在' });
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ message: '密码错误' });
 
-    const token = jwt.sign({ userId: user._id }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ 
       token, 
-      user: { id: user._id, username: user.username, email } 
+      user: { id: user.id, username: user.username, email, avatar: user.avatar } 
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// 获取当前用户
+// 获取当前用户信息
 router.get('/me', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.userId).select('-password');
-    res.json(user);
+    const pool = getPool();
+    const [users] = await pool.execute(
+      'SELECT id, username, email, avatar, contact, created_at as createdAt FROM users WHERE id = ?',
+      [req.userId]
+    );
+    
+    if (users.length === 0) return res.status(404).json({ message: '用户不存在' });
+    res.json(users[0]);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-export default router;
+// 更新用户资料（直接存 Base64）
+router.put('/profile', auth, async (req, res) => {
+  try {
+    const pool = getPool();
+    const { username, avatar } = req.body;
+    
+    await pool.execute(
+      'UPDATE users SET username = ?, avatar = ? WHERE id = ?',
+      [username, avatar, req.userId]
+    );
+    
+    const [users] = await pool.execute(
+      'SELECT id, username, email, avatar, contact FROM users WHERE id = ?',
+      [req.userId]
+    );
+    
+    res.json(users[0]);
+  } catch (err) {
+    console.error('更新资料失败:', err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+module.exports = router;
